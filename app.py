@@ -24,7 +24,6 @@ if capture_method == "Camera":
         images_to_process.append(img_file)
         st.image(img_file, caption="Card to process", use_container_width=True)
 else:
-    # 1. Enable multiple file uploads
     uploaded_files = st.file_uploader(
         "Upload business card images", 
         type=["jpg", "jpeg", "png"], 
@@ -47,18 +46,18 @@ if images_to_process:
             genai.configure(api_key=GOOGLE_API_KEY)
             model = genai.GenerativeModel('gemini-3.6-flash')
             
+            # --- THE UPDATED PROMPT ---
             prompt = """
             You are an AI business card scanner. Extract the details from the provided business card image.
-            Output strictly a valid JSON object with the following keys:
-            "Name", "Title", "Company", "Email", "Phone", "Website", "Address".
-            If a field is not present on the card, set its value to null.
+            Output strictly a valid JSON object with the following exact keys:
+            "First Name", "Last Name", "Title", "Company", "Email", "Office Phone", "Mobile Phone", "Website", "Street Address", "City", "State", "Zip".
+            If a field is not present on the card, set its value to null. 
+            Do not combine fields. Use your best judgment to determine if a phone number is mobile or office based on formatting or abbreviations.
             """
             
-            # 2. Set up the progress bar UI
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # 3. Loop through every image provided
             for index, file in enumerate(images_to_process):
                 status_text.text(f"Processing card {index + 1} of {len(images_to_process)}...")
                 
@@ -71,7 +70,6 @@ if images_to_process:
                 extracted_data = json.loads(response.text)
                 st.session_state.scanned_cards.append(extracted_data)
                 
-                # Update the progress bar mathematically
                 progress_bar.progress((index + 1) / len(images_to_process))
             
             status_text.success(f"Successfully extracted {len(images_to_process)} card(s)! Added to your list below.")
