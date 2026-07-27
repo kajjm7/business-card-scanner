@@ -33,7 +33,9 @@ if img_file is not None:
             
             base64_image = encode_image(img_file.getvalue())
 
-            REMOTE_API_URL = os.getenv("REMOTE_API_URL", "https://chat.758453567.xyz/api/chat/completions")
+            # Use Render environment variables and forcefully strip hidden characters or quotes
+            raw_url = os.getenv("REMOTE_API_URL", "https://chat.758453567.xyz/api/chat/completions")
+            REMOTE_API_URL = raw_url.strip().strip("\"'")
             API_KEY = os.getenv("OPEN_WEBUI_API_KEY", "")
             MODEL_NAME = os.getenv("MODEL_NAME", "forced-gpu-llama:latest")
 
@@ -45,9 +47,11 @@ if img_file is not None:
             Do not output any markdown formatting, backticks, or conversational text. Output ONLY the raw JSON object.
             """
 
+            # Configure headers with a browser User-Agent to bypass Cloudflare Bot Protection
             headers = {
                 "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
 
             payload = {
@@ -64,13 +68,21 @@ if img_file is not None:
                 "stream": False
             }
 
+            # Send API request with robust error handling
             try:
                 response = requests.post(REMOTE_API_URL, headers=headers, json=payload, timeout=45)
+                
+                # Grab the raw text FIRST before trying to parse it as JSON
+                raw_text = response.text
+                
+                # Check for 404 or 500 HTTP errors
                 response.raise_for_status()
                 
-                result = response.json()
+                # Parse OpenAI response format
+                result = json.loads(raw_text)
                 llm_text = result["choices"][0]["message"]["content"]
                 
+                # Clean up any surrounding markdown blocks (e.g. ```json ... ```)
                 cleaned_text = llm_text.replace("```json", "").replace("```", "").strip()
                 extracted_data = json.loads(cleaned_text)
                 
@@ -79,20 +91,26 @@ if img_file is not None:
                 st.success("Extraction Complete! Added to your list below.")
 
             except requests.exceptions.RequestException as e:
-                st.error(f"Network error connecting to Open WebUI: {e}")
+                st.error(f"Network error: {e}")
+                # This will print the exact HTML Cloudflare or the server rejected us with
+                if 'raw_text' in locals() and raw_text:
+                    st.error("The server returned this instead of JSON (Check for Cloudflare Captcha or 404 page):")
+                    st.code(raw_text[:500]) 
+                    
             except json.JSONDecodeError:
-                st.error("The model response could not be parsed as JSON.")
-                st.code(llm_text)
+                st.error("The server did not return valid JSON. Here is the raw response:")
+                if 'raw_text' in locals():
+                    st.code(raw_text[:500])
 
 # --- CSV EXPORT SECTION ---
 st.divider()
 st.subheader("📁 Scanned Contacts (Current Session)")
 
 if st.session_state.scanned_cards:
-    # Convert the list of dictionaries into a Pandas DataFrame (a data table)
+    # Convert the list of dictionaries into a Pandas DataFrame
     df = pd.DataFrame(st.session_state.scanned_cards)
     
-    # Display the table on the webpage so you can review it
+    # Display the table on the webpage
     st.dataframe(df, use_container_width=True)
     
     # Convert the DataFrame to a CSV string
