@@ -35,7 +35,7 @@ if img_file is not None:
 
             # Use Render environment variables and forcefully strip hidden characters or quotes
             raw_url = os.getenv("REMOTE_API_URL", "https://chat.758453567.xyz/api/chat/completions")
-            REMOTE_API_URL = raw_url.strip().strip("\"'")
+            REMOTE_API_URL = "https://chat.758453567.xyz/api/chat/completions"
             API_KEY = os.getenv("OPEN_WEBUI_API_KEY", "")
             MODEL_NAME = os.getenv("MODEL_NAME", "forced-gpu-llama:latest")
 
