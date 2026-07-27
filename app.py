@@ -45,7 +45,7 @@ if images_to_process:
             
         try:
             genai.configure(api_key=GOOGLE_API_KEY)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-3.6-flash')
             
             prompt = """
             You are an AI business card scanner. Extract the details from the provided business card image.
