@@ -1,0 +1,110 @@
+import streamlit as st
+import requests
+import base64
+import json
+import os
+import pandas as pd
+
+def encode_image(image_bytes):
+    """Convert image bytes to a base64 string."""
+    return base64.b64encode(image_bytes).decode('utf-8')
+
+# Initialize session state to hold scanned cards in memory
+if "scanned_cards" not in st.session_state:
+    st.session_state.scanned_cards = []
+
+st.set_page_config(page_title="Business Card Scanner", page_icon="📇")
+st.title("📇 Business Card Scanner")
+st.write("Capture or upload a business card to extract details using your Llama Vision model.")
+
+capture_method = st.radio("Choose input method:", ["Camera", "File Upload"])
+
+img_file = None
+if capture_method == "Camera":
+    img_file = st.camera_input("Position the business card and take a picture")
+else:
+    img_file = st.file_uploader("Upload a business card image", type=["jpg", "jpeg", "png"])
+
+if img_file is not None:
+    st.image(img_file, caption="Card to process", use_container_width=True)
+
+    if st.button("Extract Information", type="primary"):
+        with st.spinner("Analyzing with Llama Vision..."):
+            
+            base64_image = encode_image(img_file.getvalue())
+
+            REMOTE_API_URL = os.getenv("REMOTE_API_URL", "https://chat.758453567.xyz/api/chat/completions")
+            API_KEY = os.getenv("OPEN_WEBUI_API_KEY", "")
+            MODEL_NAME = os.getenv("MODEL_NAME", "forced-gpu-llama:latest")
+
+            prompt = """
+            You are an AI business card scanner. Extract the details from the provided business card image.
+            Output strictly a valid JSON object with the following keys:
+            "Name", "Title", "Company", "Email", "Phone", "Website", "Address".
+            If a field is not present on the card, set its value to null.
+            Do not output any markdown formatting, backticks, or conversational text. Output ONLY the raw JSON object.
+            """
+
+            headers = {
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": MODEL_NAME,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }
+                ],
+                "stream": False
+            }
+
+            try:
+                response = requests.post(REMOTE_API_URL, headers=headers, json=payload, timeout=45)
+                response.raise_for_status()
+                
+                result = response.json()
+                llm_text = result["choices"][0]["message"]["content"]
+                
+                cleaned_text = llm_text.replace("```json", "").replace("```", "").strip()
+                extracted_data = json.loads(cleaned_text)
+                
+                # Add the new data to our running list
+                st.session_state.scanned_cards.append(extracted_data)
+                st.success("Extraction Complete! Added to your list below.")
+
+            except requests.exceptions.RequestException as e:
+                st.error(f"Network error connecting to Open WebUI: {e}")
+            except json.JSONDecodeError:
+                st.error("The model response could not be parsed as JSON.")
+                st.code(llm_text)
+
+# --- CSV EXPORT SECTION ---
+st.divider()
+st.subheader("📁 Scanned Contacts (Current Session)")
+
+if st.session_state.scanned_cards:
+    # Convert the list of dictionaries into a Pandas DataFrame (a data table)
+    df = pd.DataFrame(st.session_state.scanned_cards)
+    
+    # Display the table on the webpage so you can review it
+    st.dataframe(df, use_container_width=True)
+    
+    # Convert the DataFrame to a CSV string
+    csv_data = df.to_csv(index=False).encode('utf-8')
+    
+    # Create the download button
+    st.download_button(
+        label="📥 Download all as CSV",
+        data=csv_data,
+        file_name="scanned_business_cards.csv",
+        mime="text/csv",
+        type="primary"
+    )
+else:
+    st.info("No cards scanned yet. Your extracted contacts will appear here.")
